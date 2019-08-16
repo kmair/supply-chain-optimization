@@ -1,0 +1,388 @@
+SET
+
+k    'set of commodities'                                   /F1,F2,r1*r4/
+f(k)                                                        /F1,F2/
+r(k)                                                        /r1*r4/
+nodes       'set of all nodes'                              /S1*S3,p1*p2,w1*w4,c1*c5/
+
+d(nodes)    'set of potential destinations'                 /p1*p2,w1*w4,c1*c5/
+o(nodes)    'set of origins'                                /S1*S3,p1*p2,w1*w4/
+s(nodes)    'set of potential suppliers'                    /S1*S3/
+p(nodes)    'set of potential plant locations'              /p1*p2/
+w(nodes)    'set of potention warehouse locations'          /w1*w4/
+c(nodes)    'set of costumers'                              /c1*c5/
+
+Alias(nodes,nodes2)      ;
+
+SET
+m              'set of modes'                                                        /m1*m2/
+*2d
+Cf(C,F)        'set of costumers of finished product f '                             /#c.#f/
+Dk(d,k)        'set of potential destinations for commodity k '                      /#d.#k/
+Dr(d,r)        'set of potential destinations for raw material r'                    /#d.#r/
+Fr(f,r)        'set of finished products that reqquire raw material r'               /#f.#r/
+Ok(o,k)        'set of potential origins for commodity k'                            /#o.#k/
+Oor(o,r)       'set of potential origins for raw material r'                         /#o.#r/
+Pf(p,f)        'set of potential plant locations that assembly productf'             /#p.#f/
+Sr(s,r)        'set of potential suppliers of raw material r'                        /#s.#r/
+wf(w,f)        'set of potential ware house locations that store product f'          /#w.#f/
+*3d
+Mod(m,o,d)     'set of transportation modes between o and d'                         /#m.#o.#d/
+Mwc(m,w,c)      ''                                                                   /#m.#w.#c/
+*4d
+Mkod(m,k,o,d)  'set of transportation modes for commodity k between o and d'         /#m.#k.#o.#d/
+Mrsp(m,r,s,p)  'set of transportation modes for raw material r between s and p'      /#m.#r.#s.#p/
+Mfpw(m,f,p,w) 'set of transportation modes for finished product f between p and w'   /#m.#f.#p.#w/
+Mfwc(m,f,w,c) 'set of transportation modes for finished product f between w and c'   /#m.#f.#w.#c/
+;
+
+TABLE a(f, c)     'demand(tons) of customer c for product f'
+          c1        c2        c3       c4       c5
+f1        4         2         3        7        9
+f2        6         8         7        3        4         ;
+
+TABLE b(f,r)      'amount of raw material r(in kgs) required in product f(in kgs) '
+         r1        r2        r3       r4
+f1       1         1
+f2                 0.5       1        0.5             ;
+
+PARAMETER fco(o)     'fixed cost (in million $) of selecting origin o'
+fco(o) /s1  2, s2  2, s3  3, p1  4, p2  3, w1  3, w2  4, w3  4, w4  3/ ;
+
+TABLE fcko(k,o)       'fixed cost (in million $) of assigning commodity k to origin o'
+          s1       s2       s3     p1       p2       w1       w2      w3       w4
+r1        3        4        3      1000     1000     1000     1000    1000     1000
+r2        4        3        2      1000     1000     1000     1000    1000     1000
+r3        2        3        4      1000     1000     1000     1000    1000     1000
+r4        2        2        3      1000     1000     1000     1000    1000     1000
+f1        1000     1000     1000   4        2        2        3       3        2
+f2        1000     1000     1000   4        4        3        2       2        2   ;
+
+PARAMETER ck(k) 'Cost of k (SELF-MADE)'
+/r1   2,   r2   3,  r3      1.8,   r4     1.5,   f1    3,  f2    4.5/    ;
+
+TABLE c_od(o,d) 'Cost of O to D (SELF-MADE)'
+         p1       p2       w1       w2       w3       w4       c1       c2       c3       c4       c5
+s1       4        1        1000     1000     1000     1000     1000     1000     1000     1000     1000
+s2       2        3        1000     1000     1000     1000     1000     1000     1000     1000     1000
+s3       3        3        1000     1000     1000     1000     1000     1000     1000     1000     1000
+p1       1000     1000     3        1        3        1        1000     1000     1000     1000     1000
+p2       1000     1000     1        3        3        2        1000     1000     1000     1000     1000
+w1       1000     1000     1000     1000     1000     1000     2        4        2        1        3
+w2       1000     1000     1000     1000     1000     1000     3        3        1        4        3
+w3       1000     1000     1000     1000     1000     1000     1        1        2        4        4
+w4       1000     1000     1000     1000     1000     1000     2        1        1        2        1  ;
+
+PARAMETER fckod(k,o,d)      'Fixed cost (in million $) of providing commodity k to destination d from origin o';
+fckod(k,o,d) = ck(k) * c_od(o,d) / 1000;
+
+PARAMETER cm(m) 'Cost (in million $) of using mode "m", m1 = AIR, m2 = TRUCK'
+            /m1 8, m2  5/     ;
+
+PARAMETER fcmod(m,o,d)      'fixed cost (in million $) of using transportation mode m from origin o to d' ;
+fcmod(m,o,d) = cm(m) * c_od(o,d) / 1000;
+
+PARAMETER fckmod(k,m,o,d)    'unitary cost of providing commodity k to d from o using transportation mode';
+fckmod(k,m,o,d) = ck(k) * fcmod(m,o,d) / 1000;
+
+TABLE CPI(f,w)    'Handling cost (in million $) of product f in warehouse w'
+          w1       w2       w3       w4
+f1        0.2      0.2      0.3      0.2
+f2        0.7      0.8      0.7      0.9   ;
+
+TABLE CP(f,w)      'Fixed cost (in million $) of getting product f from warehouse w'
+          w1       w2       w3       w4
+f1        0.1      0.1      0.2      0.2
+f2        0.3      0.4      0.3      0.3    ;
+
+TABLE Dfw(f,w)     'Demand of warehouse w(tons) for finished product f'
+          w1       w2       w3        w4
+f1        10       10       14
+f2        7        6        10        9   ;
+
+TABLE gfm(m,f)     'amount of capacity(m^3) required by one unity of product f in mode m'
+          f1        f2
+m1        1.5       3.0
+m2        1.0       2.0  ;
+
+TABLE gkm(m,k)     'amount of capacity(m^3) required by one unity of commodity k in mode m'
+          r1       r2       r3       r4       f1        f2
+m1        4        5        6        5        15        30
+m2        4        4        5        6        10        20   ;
+
+TABLE gmod(o,m,d)   'capacity(m^3) of transportation of mode m from o to d'
+             p1        p2        w1        w2        w3        w4        c1        c2        c3        c4        c5
+s1.m1        1000      1000      1000      1000      1000      1000      1000      1000      1000      1000      1000
+s2.m1        1000      1000      1000      1000      1000      1000      1000      1000      1000      1000      1000
+s3.m1        1000      1000      1000      1000      1000      1000      1000      1000      1000      1000      1000
+p1.m1        1000      1000      1000      1000      1000      1000      1000      1000      1000      1000      1000
+p2.m1        1000      1000      1000      1000      1000      1000      1000      1000      1000      1000      1000
+w1.m1        1000      1000      1000      1000      1000      1000      1000      1000      1000      1000      1000
+w2.m1        1000      1000      1000      1000      1000      1000      1000      1000      1000      1000      1000
+w3.m1        1000      1000      1000      1000      1000      1000      1000      1000      1000      1000      1000
+w4.m1        1000      1000      1000      1000      1000      1000      1000      1000      1000      1000      1000
+s1.m2        300       300       300       300       300       300       300       300       300       300       300
+s2.m2        300       300       300       300       300       300       300       300       300       300       300
+s3.m2        300       300       300       300       300       300       300       300       300       300       300
+p1.m2        300       300       300       300       300       300       300       300       300       300       300
+p2.m2        300       300       300       300       300       300       300       300       300       300       300
+w1.m2        300       300       300       300       300       300       300       300       300       300       300
+w2.m2        300       300       300       300       300       300       300       300       300       300       300
+w3.m2        300       300       300       300       300       300       300       300       300       300       300
+w4.m2        300       300       300       300       300       300       300       300       300       300       300    ;
+
+TABLE gmwc(w,m,c)   'capacity(m^3) of transportation of mode m from w to c'
+             c1        c2        c3        c4        c5
+w1.m1        1000      1000      1000      1000      1000
+w2.m1        1000      1000      1000      1000      1000
+w3.m1        1000      1000      1000      1000      1000
+w4.m1        1000      1000      1000      1000      1000
+w1.m2        300       300       300       300       300
+w2.m2        300       300       300       300       300
+w3.m2        300       300       300       300       300
+w4.m2        300       300       300       300       300       ;
+
+TABLE IC(f,w)    'Cost of storing product f in warehouse w'
+          w1       w2       w3       w4
+f1        3        2        3        2
+f2        6        6        6        4     ;
+
+TABLE LT(f,w)     'Lead time (in days) to replenish product f from warehouse w'
+        w1        w2        w3        w4
+f1      1          3         1         2
+f2      2          4         1         1       ;
+
+SCALAR n           'number of segments of data time unit with respect to the fixed planning horizon'   /1/
+SCALAR N1          'maximum number of warehouses in a logistics network'                          /100/
+SCALAR N2          'maximum number of plants in a logistics network'                              /100/
+SCALAR TH          'monetary updating factor'                              /0.115/
+SCALAR Var         'Vfc'                                 /1/
+
+TABLE qko(k,o)      'maximum amount (tons) of commodity k shipped from o'
+          s1       s2       s3       p1       p2       w1       w2       w3       w4
+r1        21       21       24
+r2        30       30       27
+r3        27       24       20
+r4        26       27       27
+f1                                   28       26       23       26       30       27
+f2                                   30       27       30       22       25       28     ;
+
+PARAMETER Q(k) 'Max amount of k shipped (SELF-MADE)'
+/r1 2, r2 3, r3  2, r4  2, f1 2, f2  1/   ;
+
+TABLE qod(o,d)   'Maximum amount shipped from o to d(SELF-MADE)'
+        p1       p2       w1       w2       w3       w4       c1       c2       c3       c4       c5
+s1      22       27
+s2      25       22
+s3      30       20
+p1                        24       22       27       20
+p2                        20       28       23       24
+w1                                                            23       21       26       26       25
+w2                                                            29       23       20       25       26
+w3                                                            23       29       22       29       30
+w4                                                            21       23       22       29       21 ;
+
+PARAMETER Qkod(k,o,d)   'maximum amount of commodity k shipped from o to d (Tons)';
+Qkod(k,o,d) = Q(k) * Qod(o,d)
+
+PARAMETER uo(o)         'capacity(m^3) of origin o'
+/s1   1300,  s2    1600,  s3   1500,  p1   800,  p2    1000,  w1   2200,  w2   1600,  w3   1900,  w4   2000/;
+
+TABLE Uko(k,o)      'amount of capacity(m^3) required by one unit of commodity k at origin o'
+          s1        s2        s3        p1       p2       w1       w2       w3       w4
+r1        1.3       1.5       1.3
+r2        1.4       1.5       1.5
+r3        1.3       1.4       1.4
+r4        1.4       1.2       1.0
+f1                                      2.0      2.0      2.0      2.4      2.4      2.2
+f2                                      3.1      2.8      2.8      3.0      3.0      2.9 ;
+
+TABLE Ufw(f,w)     'amount of capacity(m^3) required by one unit of f at warehouse w'
+           w1        w2        w3        w4
+f1         2.0       2.4       2.4       2.2
+f2         2.8       3.0       3.0       2.9 ;
+
+
+TABLE vfc(f,c)      'Demand(tons) variance value for product f by customer c'
+          c1         c2         c3         c4         c5
+f1        0.1        0.3        0.5        0.2        0.1
+f2        0.1        0.3        0.5        0.2        0.1   ;
+
+Table dis(nodes,nodes2)       'Distance between respective nodes (in 100km)'
+         p1       p2       w1       w2       w3       w4       c1       c2       c3       c4       c5        s1       s2       s3
+
+p1       0        11       12       13       14       15       16       17       18       19       20        10       11       12
+p2       11       0        5        6        7        8        9        5        6        7        8         9        10       11
+w1       12       5        0        6        7        8        9        11       12       14       13        11       9        8
+w2       13       6        6        0        5        6        7        8        9        7        5         13       15       6
+w3       14       7        7        5        0        11       12       13       5        8        9         11       7        9
+w4       15       8        8        6        11       0        7        9        5        14       15        16       7        9
+c1       16       9        9        7        12       7        0        18       15       13       9         7        9        13
+c2       17       5        11       8        13       9        18       0        11       9        7         7        11       14
+c3       18       6        12       9        5        5        15       11       0        9        6         12       10       9
+c4       19       7        14       7        8        14       13       9        9        0        11        6        8        9
+c5       20       8        13       5        9        15       9        7        6        11       0         9        7        10
+s1       10       9        11       13       11       16       7        7        12       6        9         0        9        11
+s2       11       10       9        15       7        7        9        11       10       8        7         9        0        7
+s3       12       11       8        6        9        9        13       14       9        9        19        11       7        0;
+
+table spe(m,k)       'Speed of travelling (in 100km/day)'
+        F1      F2      r1      r2       r3      r4
+m1      50      45      50      45       35      40
+m2      8       8       5       6        5       6        ;
+
+SCALAR Zfw      'We select constant standard normal probability that warehouse w, with level of service s' /0.95/;
+
+POSITIVE VARIABLE
+
+X(k,m,nodes,nodes2)     'Amount of k transported via m from '
+
+;
+
+VARIABLE
+z_cost
+z_time
+;
+
+BINARY VARIABLE
+* the index of the binary variable may not corresbond to the constrains 2.14-2.17
+U(nodes)   'indicate if origin o is selected'
+V(k,o)  'indicate if commodity k is assigned to origin o'
+Y(k,nodes,nodes2)  'indicate if warehouse w provides product f to costumer c; similarly'
+Z(m,nodes,nodes2)
+;
+Equation
+e1_Cost   obj function
+e2
+e3
+e4
+e5
+e6
+e7
+e8
+e9
+e10
+e11
+e12
+e1_Time    obj2
+;
+
+* DEMAND CONSTRAINTS
+* From Supplier to Plant
+e2(r,p)..sum( s$Sr(s,r),sum( m$Mrsp(m,r,s,p),X(r,m,s,p) ))-sum( f$Fr(f,r),sum( w$wf(w,f),sum( m$Mfpw(m,f,p,w),b(f,r)*X(f,m,p,w) )) )=e= 0 ;
+
+* From Plant to Warehouse
+e3( f,w)$Wf(w,f)..sum( p$pf(p,f),sum( m$Mfpw(m,f,p,w),X(f,m,p,w)) )- sum(c,sum( m$Mfwc(m,f,w,c),X(f,m,w,c) ) )=e= 0 ;
+
+* From Warehouse to Customer
+e4(c,f)$Cf(c,f)..sum( w$Wf(w,f),sum(m$Mfwc(m,f,w,c),X(f,m,w,c))) =e= a(f,c);
+
+* CAPACITY CONSTRAINTS
+* Capacity Constraint at origin
+e5(o) .. sum( k,sum( d$Dk(d,k),sum( m$Mkod(m,k,o,d),Uko(k,o)*X(k,m,o,d) ) )) - 0.8 * uo(o)*U(o) =L= 0;
+
+* Maximum amount shipped from an origin
+e6( k,o)$Ok(o,k) .. sum( d$Dk(d,k),sum( m$Mkod(m,k,o,d),X(k,m,o,d) ) ) -qko(k,o)*V(k,o) =L= 0 ;
+
+* Maximum amount shipped from an origin to a destination
+e7( k,o,d)$(Ok(o,k) and Dk(d,k))..sum( m$Mkod(m,k,o,d),X(k,m,o,d))  - Qkod(k,o,d)*Y(k,o,d)  =L= 0 ;
+
+* Capacity to transport a commodity
+e8(o,d, m)$Mod(m,o,d) .. sum( k,gkm(m,k)*X(k,m,o,d) )  - 0.9 * gmod(o,m,d)*Z(m,o,d) =L= 0 ;
+
+e9(w,c,m)$Mwc(m,w,c) .. sum( f,Ufw(f,w)*gfm(m,f)*X(f,m,w,c) )-gmwc(w,m,c)*Z(m,w,c) =L= 0 ;
+
+* CONSTRAINTS ON MAXIMUM UNITS IN A NODE
+* Warehouses
+e10.. sum(w,U(w))=L= N1;
+
+* Plants
+e11 .. sum(p,U(p)) =L= N2;
+
+* Constraint on restricting 1 warehouse at most to satisfy a customer demand
+e12( f,c).. sum(w,Y(f,w,c)) =e=1;
+* e13 not needed since already constrained
+
+e1_Cost.. z_cost =e= sum( o,fco(o)*U(o)+ sum( d,sum( m$Mod(m,o,d) ,fcmod(m,o,d)*Z(m,o,d) ) ) )
+           + sum( k,sum(o$ok(o,k),(fcko(k,o)*V(k,o)+sum(d$Dk(d,k),(fckod(k,o,d)*Y(k,o,d)+sum(m$Mkod(m,k,o,d),Fckmod(k,m,o,d)*X(k,m,o,d)))))))
+           + TH/n*sum(f,sum(w,(CPI(f,w)*sum(c,sum(m,X(f,m,w,c))))))
+           + TH*sum(f,sum(w,(sqrt(2*Cp(f,w)*IC(f,w)/n)*sqrt(sum(c,sum(m,X(f,m,w,c) ))) +  IC(f,w)*sqrt(LT(f,w))*Zfw * sqrt(sum(c,Var*Y(f,w,c)))   ))  )
+ ;
+e1_Time.. z_time =e=  sum((k,m,nodes,nodes2),X(k,m,nodes,nodes2)*dis(nodes,nodes2)/spe(m,k));
+
+*option MINLP = BARON ;
+*option MINLP = ANTIGONE;
+*option MINLP = DICOPT;
+option MINLP = OQNLP;
+
+model SUPPLY_CHAIN/all/;
+*solve SUPPLY_CHAIN using MINLP minimizing z_cost;
+*display z_cost.l, z_time.l;
+
+  option optCA = 0 ;
+  option optCR = 0 ;
+  option limRow = 0 ;
+  option limCol = 0 ;
+
+* -------------------- Solving Model -----------------------------------------
+
+* Aggregated flows for Part A
+* parameters aggF(s,p), aggF_(p,c) ;
+
+* Obtaining Pareto Curve for Part B
+  set l / 1*10 / ;
+  scalars minZC, minZT, maxZC, maxZT, step ;
+  parameter ParZC(l), ParZT(l), epsilon(l) ;
+
+* Determine minZC, maxZT, aggF and aggF_ for min ZT
+  solve SUPPLY_CHAIN using MINLP min z_cost ;
+*  aggF(s,p) = sum((i,t),F.l(i,s,p,t)) ;
+*  aggF_(p,c) = sum((j,t),Fbar.l(j,p,c,t)) ;
+  minZC = z_cost.l ;
+  maxZT = z_time.l ;
+display minZC, maxZT;
+display X.l;
+* Determine maxZC, minZT, aggF and aggF_ for min ZT
+  solve SUPPLY_CHAIN using MINLP min z_time ;
+  maxZC = z_cost.l ;
+  minZT = z_time.l ;
+*  aggF(s,p) = sum((i,t),F.l(i,s,p,t)) ;
+*  aggF_(p,c) = sum((j,t),Fbar.l(j,p,c,t)) ;
+  display maxZC, minZT ;
+ display X.l;
+
+* Compute epsilon.
+  epsilon('1') = minZC ;
+  epsilon(l)$(ord(l)=card(l)) = maxZC ;
+  step = (maxZC-minZC)/(card(l)-1) ;
+  loop( l$(ord(l)>1 and ord(l)<card(l)) ,
+    epsilon(l) = epsilon(l-1)+step ;
+  ) ;
+
+*$onText
+* Obtain Pareto-optimal solutions.
+  ParZC('1') = minZC ;
+  ParZT('1') = maxZT ;
+  ParZC(l)$(ord(l)=card(l)) = maxZC ;
+  ParZT(l)$(ord(l)=card(l)) = minZT ;
+  loop( l$(ord(l)>1 and ord(l)<card(l)) ,
+    z_cost.up = epsilon(l)
+    solve Supply_Chain use MINLP min z_time ;
+    ParZC(l) = z_cost.l ;
+    ParZT(l) = z_time.l ;
+    display X.l
+  ) ;
+  display ParZC, ParZT;
+* ----------------------------------------------------------------------------
+
+*$offText
+
+
+
+
+
+
+
+
+
+
